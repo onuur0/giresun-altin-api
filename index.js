@@ -36,9 +36,8 @@ app.get("/prices", async (req, res) => {
     const fiyatText = $(".value").first().text().trim();
 
     res.json({
-      source: "doviz.com",
-      gram_altin: fiyatText,
-      fetchedAt: new Date().toISOString()
+      html_length: data.length,
+      html_preview: data.substring(0, 500),
     });
   } catch (error) {
     res.status(500).json({

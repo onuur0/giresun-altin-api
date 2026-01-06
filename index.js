@@ -1,98 +1,99 @@
+const express = require("express");
+const axios = require("axios");
+const cheerio = require("cheerio");
+const cors = require("cors");
+
+const app = express();
+app.use(cors());
+
+const PORT = process.env.PORT || 3000;
+
+// Sayı temizleme fonksiyonu: "2.500,00" -> 2500.00
+const temizle = (text) => {
+    if (!text) return 0;
+    const temiz = text.replace(/\./g, "").replace(",", ".").trim();
+    return parseFloat(temiz) || 0;
+};
+
 app.get("/prices", async (req, res) => {
-  try {
-    const url = "https://giresunkuyumculardernegi.com/CurrentPrices.aspx";
+    try {
+        const url = "https://www.giresunkuyumculardernegi.com/CurrentPrices.aspx";
+        const { data: html } = await axios.get(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+            }
+        });
 
-    const { data: html } = await axios.get(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      }
-    });
+        const $ = cheerio.load(html);
+        const tables = $("table");
 
-    const $ = cheerio.load(html);
-    const tables = $("table");
+        // 1. TABLO: SARRAFİYELER
+        const sarrafiye = [];
+        tables.eq(0).find("tbody tr").each((_, row) => {
+            const tds = $(row).find("td, th");
+            if (tds.length >= 4) {
+                const isim = $(tds[0]).text().trim();
+                // Sitedeki ID'leri kullanarak nokta atışı veri çekme
+                sarrafiye.push({
+                    isim: isim,
+                    alis: temizle($(tds[1]).text()),
+                    nakit: temizle($(tds[2]).text()),
+                    kredi: temizle($(tds[3]).text())
+                });
+            }
+        });
 
-    /* =====================
-       SARRAFİYE (TABLO 0)
-    ====================== */
-    const sarrafiye = {};
+        // 2. TABLO: GRAM FİYATLAR
+        const gramFiyatlar = [];
+        tables.eq(1).find("tbody tr").each((_, row) => {
+            const tds = $(row).find("td, th");
+            if (tds.length >= 4) {
+                gramFiyatlar.push({
+                    isim: $(tds[0]).text().trim(),
+                    alis: temizle($(tds[1]).text()),
+                    nakit: temizle($(tds[2]).text()),
+                    kredi: temizle($(tds[3]).text())
+                });
+            }
+        });
 
-    tables.eq(0).find("tr").each((_, row) => {
-      const tds = $(row).find("td");
-      if (tds.length < 4) return;
+        // 3. TABLO: GÜNLÜK KURLAR
+        const kurlar = {};
+        tables.eq(2).find("tbody tr").each((_, row) => {
+            const tds = $(row).find("td, th");
+            if (tds.length >= 2) {
+                const isim = $(tds[0]).text().toUpperCase();
+                const deger = temizle($(tds[1]).text());
+                
+                if (isim.includes("HAS")) kurlar.has = deger;
+                if (isim.includes("DOLAR")) kurlar.dolar = deger;
+                if (isim.includes("EURO")) kurlar.euro = deger;
+                if (isim.includes("ONS")) kurlar.ons = deger;
+            }
+        });
 
-      const isim = $(tds[0]).text().trim();
-      if (!isim || isim.match(/^\d/)) return; // sayıyla başlıyorsa atla
+        const guncelleme = $("#ContentPlaceHolder1_LabelUpdateDate").text().trim();
 
-      sarrafiye[isim] = {
-        alis: temizle($(tds[1]).text()),
-        nakit: temizle($(tds[2]).text()),
-        kredi: temizle($(tds[3]).text())
-      };
-    });
+        res.json({
+            success: true,
+            updatedAt: guncelleme,
+            apiFetchedAt: new Date().toISOString(),
+            data: {
+                sarrafiye,
+                gramFiyatlar,
+                kurlar
+            }
+        });
 
-    /* =====================
-       GRAM (TABLO 1)
-    ====================== */
-    let gram24 = {}, gram22 = {};
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: "Siteye erişilemedi",
+            detail: err.message
+        });
+    }
+});
 
-    tables.eq(1).find("tr").each((_, row) => {
-      const tds = $(row).find("td");
-      if (tds.length < 4) return;
-
-      const isim = $(tds[0]).text().toUpperCase();
-
-      if (isim.includes("24")) {
-        gram24 = {
-          alis: temizle($(tds[1]).text()),
-          nakit: temizle($(tds[2]).text()),
-          kredi: temizle($(tds[3]).text())
-        };
-      }
-
-      if (isim.includes("22")) {
-        gram22 = {
-          alis: temizle($(tds[1]).text()),
-          nakit: temizle($(tds[2]).text()),
-          kredi: temizle($(tds[3]).text())
-        };
-      }
-    });
-
-    /* =====================
-       KURLAR (TABLO 2)
-    ====================== */
-    const kur = {};
-
-    tables.eq(2).find("tr").each((_, row) => {
-      const tds = $(row).find("td");
-      if (tds.length < 2) return;
-
-      const isim = $(tds[0]).text().toUpperCase();
-      const deger = temizle($(tds[1]).text());
-
-      if (isim.includes("HAS")) kur.has = deger;
-      if (isim.includes("DOLAR")) kur.dolar = deger;
-      if (isim.includes("EURO")) kur.euro = deger;
-      if (isim.includes("ONS")) kur.ons = deger;
-    });
-
-    const saat = new Date().toLocaleTimeString("tr-TR", {
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-
-    res.json({
-      gram24,
-      gram22,
-      sarrafiye,
-      kur,
-      updatedAt: saat
-    });
-
-  } catch (err) {
-    res.status(500).json({
-      error: "Veri çekilemedi",
-      detail: err.message
-    });
-  }
+app.listen(PORT, () => {
+    console.log(`Server ${PORT} portunda çalışıyor.`);
 });

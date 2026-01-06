@@ -1,24 +1,3 @@
-import express from "express";
-import axios from "axios";
-import * as cheerio from "cheerio";
-
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-/**
- * TEST endpoint
- * API ayakta mı diye kontrol
- */
-app.get("/", (req, res) => {
-  res.send("Giresun Altın API çalışıyor");
-});
-
-/**
- * GERÇEK SCRAPING
- * Şimdilik örnek bir sayfadan veri çekiyoruz
- * (Bir sonraki adımda Giresun Kuyumcular Odası’na uyarlayacağız)
- */
 app.get("/prices", async (req, res) => {
   try {
     const url = "https://www.giresunkuyumculardernegi.com/CurrentPrices.aspx";
@@ -32,12 +11,26 @@ app.get("/prices", async (req, res) => {
 
     const $ = cheerio.load(data);
 
-    // Doviz.com sayfa yapısı (örnek)
-    const fiyatText = $(".value").first().text().trim();
+    const prices = {};
+
+    $("table tbody tr").each((_, row) => {
+      const name = $(row).find("th.text-left").text().trim();
+
+      if (!name) return;
+
+      const tds = $(row).find("td.text-danger");
+
+      prices[name] = {
+        alis: $(tds[0]).text().trim(),
+        nakit: $(tds[1]).text().trim(),
+        kredi: $(tds[2]).text().trim()
+      };
+    });
 
     res.json({
-      html_length: data.length,
-      html_preview: data.substring(0, 500),
+      source: "giresun-kuyumcular-odasi",
+      updatedAt: new Date().toLocaleTimeString("tr-TR"),
+      prices
     });
   } catch (error) {
     res.status(500).json({
@@ -45,11 +38,4 @@ app.get("/prices", async (req, res) => {
       detail: error.message
     });
   }
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-
-  console.log("SCRAPING VERSION 2 ÇALIŞIYOR");
-
 });

@@ -49,4 +49,7 @@ app.get("/prices", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+
+  console.log("SCRAPING VERSION 2 ÇALIŞIYOR");
+
 });

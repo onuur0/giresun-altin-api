@@ -21,7 +21,7 @@ app.get("/", (req, res) => {
  */
 app.get("/prices", async (req, res) => {
   try {
-    const url = "https://www.doviz.com/altin/gram-altin";
+    const url = "https://www.altinpiyasa.com/";
 
     const { data } = await axios.get(url, {
       headers: {

@@ -1,28 +1,52 @@
 import express from "express";
+import axios from "axios";
+import cheerio from "cheerio";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.get("/prices", (req, res) => {
-  res.json({
-    gram24: {
-      alis: 2450.5,
-      nakit: 2550.0,
-      kredi: 2580.0
-    },
-    kur: {
-      has: 2480.0,
-      dolar: 32.45,
-      euro: 35.1,
-      ons: 2034.2
-    },
-    updatedAt: new Date().toLocaleTimeString("tr-TR", {
-      hour: "2-digit",
-      minute: "2-digit"
-    })
-  });
+/**
+ * TEST endpoint
+ * API ayakta mı diye kontrol
+ */
+app.get("/", (req, res) => {
+  res.send("Giresun Altın API çalışıyor");
+});
+
+/**
+ * GERÇEK SCRAPING
+ * Şimdilik örnek bir sayfadan veri çekiyoruz
+ * (Bir sonraki adımda Giresun Kuyumcular Odası’na uyarlayacağız)
+ */
+app.get("/prices", async (req, res) => {
+  try {
+    const url = "https://www.doviz.com/altin/gram-altin";
+
+    const { data } = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+      }
+    });
+
+    const $ = cheerio.load(data);
+
+    // Doviz.com sayfa yapısı (örnek)
+    const fiyatText = $(".value").first().text().trim();
+
+    res.json({
+      source: "doviz.com",
+      gram_altin: fiyatText,
+      fetchedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Veri çekilemedi",
+      detail: error.message
+    });
+  }
 });
 
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log(`Server running on port ${PORT}`);
 });

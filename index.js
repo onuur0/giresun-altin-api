@@ -2,105 +2,90 @@ import express from "express";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import cors from "cors";
+import https from "https";
 
 const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 
-// Sayı temizleme fonksiyonu
+app.get("/", (req, res) => {
+  res.send("API ÇALIŞIYOR");
+});
+
+const agent = new https.Agent({
+  rejectUnauthorized: false
+});
+
 const temizle = (text) => {
-    if (!text) return 0.0;
-    const temizMetin = text.replace(/\./g, "").replace(",", ".").trim();
-    const sayi = parseFloat(temizMetin);
-    return isNaN(sayi) ? 0.0 : sayi;
+  if (!text) return 0;
+  return parseFloat(
+    text.replace(/\./g, "").replace(",", ".").trim()
+  ) || 0;
 };
 
 app.get("/prices", async (req, res) => {
-    try {
-        const url = "https://www.giresunkuyumculardernegi.com/CurrentPrices.aspx";
-        
-        const { data: html } = await axios.get(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-            }
-        });
+  try {
+    const url = "https://www.giresunkuyumculardernegi.com/CurrentPrices.aspx";
 
-        const $ = cheerio.load(html);
-        const tables = $("table");
+    const { data } = await axios.get(url, {
+      httpsAgent: agent,
+      headers: { "User-Agent": "Mozilla/5.0" }
+    });
 
-        // === 1. SARRAFİYE ===
-        const sarrafiye = [];
-        tables.eq(0).find("tr").each((_, row) => {
-            const tds = $(row).find("td");
-            if (tds.length >= 3) { 
-                const isim = $(row).find("th").text().trim(); 
-                if (isim && isim !== "Sarrafiyeler") {
-                     sarrafiye.push({
-                        tur: isim,
-                        alis: temizle($(tds[0]).text()),
-                        satis: temizle($(tds[1]).text()),
-                        krediSatis: temizle($(tds[2]).text())
-                    });
-                }
-            }
-        });
+    const $ = cheerio.load(data);
+    const tables = $("table");
 
-        // === 2. GRAM ALTINLAR ===
-        const gramAltinlar = [];
-        tables.eq(1).find("tr").each((_, row) => {
-            const tds = $(row).find("td");
-            if (tds.length >= 3) {
-                const isim = $(row).find("th").text().trim();
-                if (isim && isim !== "Gram Fiyatlar") {
-                    gramAltinlar.push({
-                        tur: isim,
-                        alis: temizle($(tds[0]).text()),
-                        satis: temizle($(tds[1]).text()),
-                        krediSatis: temizle($(tds[2]).text())
-                    });
-                }
-            }
-        });
-
-        // === 3. KURLAR ===
-        const kurlar = {};
-        tables.eq(2).find("tr").each((_, row) => {
-            const tds = $(row).find("td");
-            const th = $(row).find("th");
-            
-            if (th.length > 0 && tds.length > 0) {
-                const isim = th.text().toUpperCase().trim();
-                const deger = temizle(tds.eq(0).text());
-
-                if (isim.includes("HAS")) kurlar.has = deger;
-                if (isim.includes("DOLAR")) kurlar.dolar = deger;
-                if (isim.includes("EURO")) kurlar.euro = deger;
-                if (isim.includes("ONS")) kurlar.ons = deger;
-            }
-        });
-
-        const guncellemeSaati = $("#ContentPlaceHolder1_LabelUpdateDate").text().trim();
-
-        res.json({
-            basari: true,
-            sonGuncelleme: guncellemeSaati,
-            veri: {
-                sarrafiye: sarrafiye,
-                gram: gramAltinlar,
-                kurlar: kurlar
-            }
-        });
-
-    } catch (err) {
-        console.error("Hata:", err.message);
-        res.status(500).json({
-            basari: false,
-            mesaj: "Veri çekilemedi: " + err.message
-        });
+    if (tables.length < 3) {
+      throw new Error("Tablolar eksik");
     }
+
+    const sarrafiye = [];
+    tables.eq(0).find("tr").each((_, row) => {
+      const tds = $(row).find("td");
+      const th = $(row).find("th");
+      if (tds.length >= 3 && th.text()) {
+        sarrafiye.push({
+          tur: th.text().trim(),
+          alis: temizle(tds.eq(0).text()),
+          satis: temizle(tds.eq(1).text()),
+          krediSatis: temizle(tds.eq(2).text())
+        });
+      }
+    });
+
+    const gram = [];
+    tables.eq(1).find("tr").each((_, row) => {
+      const tds = $(row).find("td");
+      const th = $(row).find("th");
+      if (tds.length >= 3 && th.text()) {
+        gram.push({
+          tur: th.text().trim(),
+          alis: temizle(tds.eq(0).text()),
+          satis: temizle(tds.eq(1).text()),
+          krediSatis: temizle(tds.eq(2).text())
+        });
+      }
+    });
+
+    const kurlar = {};
+    tables.eq(2).find("tr").each((_, row) => {
+      const th = $(row).find("th").text().toUpperCase();
+      const td = temizle($(row).find("td").eq(0).text());
+      if (th.includes("HAS")) kurlar.has = td;
+      if (th.includes("DOLAR")) kurlar.dolar = td;
+      if (th.includes("EURO")) kurlar.euro = td;
+      if (th.includes("ONS")) kurlar.ons = td;
+    });
+
+    res.json({ basari: true, veri: { sarrafiye, gram, kurlar } });
+
+  } catch (e) {
+    console.error(e.message);
+    res.status(500).json({ basari: false, hata: e.message });
+  }
 });
 
 app.listen(PORT, () => {
-    console.log(`Sunucu ${PORT} portunda çalışıyor...`);
+  console.log("Server running on", PORT);
 });

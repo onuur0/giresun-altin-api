@@ -9,6 +9,11 @@ app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 
+// ✅ CACHE DEĞİŞKENLERİ
+let cachedData = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 30 * 1000; // 30 saniye
+
 app.get("/", (req, res) => {
   res.send("API CALISIYOR");
 });
@@ -26,6 +31,13 @@ const temizle = (text) => {
 
 app.get("/prices", async (req, res) => {
   try {
+    const now = Date.now();
+
+    // ✅ CACHE VARSA DİREKT DÖN
+    if (cachedData && (now - lastFetchTime < CACHE_DURATION)) {
+      return res.json(cachedData);
+    }
+
     const url = "https://www.giresunkuyumculardernegi.com/CurrentPrices.aspx";
 
     const { data } = await axios.get(url, {
@@ -78,10 +90,16 @@ app.get("/prices", async (req, res) => {
       if (th.includes("ONS")) kurlar.ons = td;
     });
 
-    res.json({
+    const responseData = {
       basari: true,
       veri: { sarrafiye, gram, kurlar }
-    });
+    };
+
+    // ✅ CACHE’E YAZ
+    cachedData = responseData;
+    lastFetchTime = Date.now();
+
+    res.json(responseData);
 
   } catch (e) {
     res.status(500).json({

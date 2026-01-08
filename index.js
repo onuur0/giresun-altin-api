@@ -4,6 +4,9 @@ import * as cheerio from "cheerio";
 import cors from "cors";
 import https from "https";
 
+const DOVIZ_API = "https://open.er-api.com/v6/latest/TRY";
+
+
 const app = express();
 app.use(cors());
 
@@ -88,7 +91,25 @@ app.get("/prices", async (req, res) => {
       if (th.includes("DOLAR")) kurlar.dolar = td;
       if (th.includes("EURO")) kurlar.euro = td;
       if (th.includes("ONS")) kurlar.ons = td;
+
+      
     });
+
+    // 🔁 DOLAR / EURO 0 GELİRSE DIŞ API'DEN AL
+if (!kurlar.dolar || kurlar.dolar === 0 || !kurlar.euro || kurlar.euro === 0) {
+  try {
+    const dovizRes = await axios.get(DOVIZ_API);
+    const rates = dovizRes.data?.rates;
+
+    if (rates?.USD && rates?.EUR) {
+      kurlar.dolar = Number((1 / rates.USD).toFixed(2));
+      kurlar.euro  = Number((1 / rates.EUR).toFixed(2));
+    }
+  } catch (err) {
+    console.log("Döviz API hatası:", err.message);
+  }
+}
+
 
     const responseData = {
       basari: true,
